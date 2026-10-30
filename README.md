@@ -6,7 +6,7 @@ supported methods match the current `@crydensync/sdk` JavaScript client.
 ## Install
 
 ```bash
-pip install crydensync
+pip install crydensync-sdk
 ```
 
 For local development:
