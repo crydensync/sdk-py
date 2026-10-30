@@ -42,7 +42,7 @@ class FileStorageAdapter:
     def __init__(self, path: str) -> None:
         from pathlib import Path
 
-        self.path = Path(path)
+        self.path = Path(path).expanduser()
 
     def get(self, key: str) -> Optional[str]:
         import json

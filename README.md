@@ -1,84 +1,72 @@
-# crydensync-py - Python SDK
+# CrydenSync Python SDK
 
-<div align="center">
+A synchronous, dependency-free Python client for the authentication API. Its
+supported methods match the current `@crydensync/sdk` JavaScript client.
 
-[![Status](https://img.shields.io/badge/status-planning-yellow)]()
-[![License](https://img.shields.io/badge/license-MIT-blue)]()
-[![Go Version](https://img.shields.io/badge/go-1.21+-blue)]()
+## Install
 
-</div>
+```bash
+pip install crydensync
+```
 
-## 🔗 Quick Links
-- [Documentation](https://docs.crydensync.com)
-- [GitHub Organization](https://github.com/crydensync)
-- [Core Repository](https://github.com/crydensync/cryden)
-- [Report Bug](https://github.com/crydensync/cryden/issues)
-- [Discord Community](https://discord.gg/crydensync) (coming soon)
+For local development:
 
-## 🎯 Purpose
-Pythonic interface for CrydenSync authentication.
-
-## 📊 Status
-- **Phase**: Planning
-- **Progress**: 0%
-- **Target**: After api v1.0.0
-
-## 🗺️ Roadmap
-
-### v1.0.0
-- [ ] Sync client
-- [ ] Async client
-- [ ] Type hints
-- [ ] Django integration
-- [ ] Flask integration
-
-### v1.1.0
-- [ ] FastAPI integration
-- [ ] CLI tools
-- [ ] Session management
-
-## 🔧 Development
 ```bash
 pip install -e .
-pytest
 ```
 
-📦 Usage
+## Usage
 
 ```python
-from crydensync import Cryden
+from crydensync import Cryden, CrydenError
 
-cryden = Cryden('https://api.crydensync.com')
-user = cryden.auth.sign_up(email, password)
+client = Cryden("https://auth.example.com")
+user = client.sign_up("dev@example.com", "SecurePass123!")
+tokens = client.login("dev@example.com", "SecurePass123!")
+print(user["user_id"], client.verify()["user_id"])
+
+try:
+    sessions = client.list_sessions()
+except CrydenError as error:
+    print(error.code, error.status, str(error))
 ```
 
-🔗 Dependencies
+The SDK adds `/v1` to the base URL. It stores tokens in memory by default.
+Supply a storage adapter to customize persistence:
 
-· api HTTP endpoints
+```python
+from crydensync import Cryden, FileStorageAdapter
 
-## 🆘 Getting Help
+client = Cryden(
+    "https://auth.example.com",
+    storage=FileStorageAdapter("~/.config/myapp/cryden-tokens.json"),
+)
+```
 
-- **Documentation**: [docs.crydensync.com](https://docs.crydensync.com)
-- **Issues**: [GitHub Issues](https://github.com/crydensync/cryden/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/crydensync/cryden/discussions)
-- **Discord**: [Join our server](https://discord.gg/crydensync) (coming soon)
+`FileStorageAdapter` stores its values as plain text. Choose an encrypted
+adapter when local filesystem access is not trusted. You can also implement
+`StorageAdapter` with `get(key)`, `set(key, value)`, and `remove(key)` methods.
 
-## 🤝 Contributing
+## Supported methods
 
-We welcome contributions! Please:
+- `sign_up`, `login`, `is_authenticated`
+- `logout`, `logout_all`, `verify`
+- `list_sessions`, `revoke_session`
+- `change_password`, `delete_account`
+- `request_email_change`, `confirm_email_change`
 
-1. Read [CONTRIBUTING.md](CONTRIBUTING.md)
-2. Check [open issues](https://github.com/crydensync/cryden/issues)
-3. Join [Discord](https://discord.gg/crydensync)
+Authenticated calls refresh once after a 401 and retry with the new access
+token. Failed refresh clears the stored token pair. Password changes and
+account deletion clear local tokens after success. Email change confirmation
+does not require authentication.
 
-**Current needs:**
-- 🐛 Bug hunters
-- 📝 Documentation writers
-- 🧪 Testers
-- 💡 Feature ideas
+## Development
 
-## 📄 License
+```bash
+python -m pip install -e .
+python smoketest.py http://localhost:8080
+```
 
-MIT © [CrydenSync](https://github.com/crydensync)
+## License
 
-**This is open source software. Use it freely, modify it, share it.**
+MIT
