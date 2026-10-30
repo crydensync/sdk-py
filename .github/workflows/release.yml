@@ -1,0 +1,105 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: api
+          POSTGRES_PASSWORD: api_test
+          POSTGRES_DB: api_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout Python SDK
+        uses: actions/checkout@v4
+        with:
+          path: sdk-py
+
+      - name: Checkout CSAG API
+        uses: actions/checkout@v4
+        with:
+          repository: crydensync/csag
+          path: api
+
+      - name: Confirm tag matches package version
+        run: |
+          PACKAGE_VERSION=$(sed -n 's/^version = "\([^"]*\)"/\1/p' sdk-py/pyproject.toml | head -n 1)
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [ "$PACKAGE_VERSION" != "$TAG_VERSION" ]; then
+            echo "Tag v$TAG_VERSION does not match package version $PACKAGE_VERSION"
+            exit 1
+          fi
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: api/go.mod
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Run API migrations
+        run: |
+          for migration in migrations/*.up.sql; do
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
+          done
+        working-directory: api
+        env:
+          DATABASE_URL: postgres://api:api_test@localhost:5432/api_test?sslmode=disable
+
+      - name: Start API server
+        run: |
+          go build -o api_server .
+          ./api_server &
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://localhost:8080/v1/health >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "API did not become healthy"
+          exit 1
+        working-directory: api
+        env:
+          DATABASE_URL: postgres://api:api_test@localhost:5432/api_test?sslmode=disable
+          JWT_SECRET: ci-test-secret-not-for-prod
+          CORS_ORIGINS: http://localhost:5173
+          PORT: 8080
+
+      - name: Build and validate distributions
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build
+          python -m twine check dist/*
+        working-directory: sdk-py
+
+      - name: Run smoke test against the live API
+        run: python smoketest.py http://localhost:8080
+        working-directory: sdk-py
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          packages-dir: sdk-py/dist/
